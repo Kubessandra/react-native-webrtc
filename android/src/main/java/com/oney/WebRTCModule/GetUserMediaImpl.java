@@ -51,6 +51,7 @@ class GetUserMediaImpl {
 
     private Promise displayMediaPromise;
     private Intent mediaProjectionPermissionResultData;
+    private RawVideoCaptureController rawVideoCaptureController;
 
     GetUserMediaImpl(WebRTCModule webRTCModule, ReactApplicationContext reactContext) {
         this.webRTCModule = webRTCModule;
@@ -278,6 +279,27 @@ class GetUserMediaImpl {
         }
     }
 
+    public void createRawStream(int width, int height, Promise promise) {
+        VideoTrack track = createRawTrack(width, height);
+
+        if (track == null) {
+            promise.reject(new RuntimeException("RawTrack is null."));
+        } else {
+            createStream(new MediaStreamTrack[]{track}, (streamId, tracksInfo) -> {
+                WritableMap data = Arguments.createMap();
+
+                data.putString("streamId", streamId);
+
+                if (tracksInfo.size() == 0) {
+                    promise.reject(new RuntimeException("No RawTrackInfo found."));
+                } else {
+                    data.putMap("track", tracksInfo.get(0));
+                    promise.resolve(data);
+                }
+            });
+        }
+    }
+
     private void createScreenStream() {
         VideoTrack track = createScreenTrack();
 
@@ -347,6 +369,19 @@ class GetUserMediaImpl {
         webRTCModule.localStreams.put(streamId, mediaStream);
 
         successCallback.accept(streamId, tracksInfo);
+    }
+
+    public RawVideoCaptureController getRawVideoCaptureController() {
+        return this.rawVideoCaptureController;
+    }
+
+    private VideoTrack createRawTrack(int width, int height) {
+        if (this.rawVideoCaptureController == null) {
+            this.rawVideoCaptureController = new RawVideoCaptureController(width, height);
+        } else {
+            Log.w(TAG, "Raw video captureController already created, you can't create two of them");
+        }
+        return createVideoTrack(this.rawVideoCaptureController);
     }
 
     private VideoTrack createScreenTrack() {

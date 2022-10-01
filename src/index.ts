@@ -22,6 +22,8 @@ import mediaDevices from './MediaDevices';
 import permissions from './Permissions';
 import Logger from './Logger';
 
+import { getRawMedia, sendRawFrame } from './RawMedia';
+
 Logger.enable('*');
 //Logger.enable(`*,-${Logger.ROOT_PREFIX}:*:DEBUG`);
 
@@ -48,7 +50,9 @@ export {
     MediaStreamTrack,
     mediaDevices,
     permissions,
-    registerGlobals
+    registerGlobals,
+    getRawMedia,
+    sendRawFrame,
 };
 
 function registerGlobals(): void {

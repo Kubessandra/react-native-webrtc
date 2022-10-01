@@ -762,6 +762,24 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void createRawStream(int width, int height, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.createRawStream(width, height, promise));
+    }
+
+    @ReactMethod
+    public void sendRawFrame(String videoBufferString, int size, int width, int height, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> {
+            try {
+                byte[] videoBuffer = videoBufferString.getBytes();
+                getUserMediaImpl.getRawVideoCaptureController().sendFrame(videoBuffer, size, width, height);
+                promise.resolve(true);
+            } catch (RuntimeException ex) {
+                promise.reject(ex);
+            }
+        });
+    }
+
+    @ReactMethod
     public void enumerateDevices(Callback callback) {
         ThreadUtils.runOnExecutor(() ->
             callback.invoke(getUserMediaImpl.enumerateDevices()));
