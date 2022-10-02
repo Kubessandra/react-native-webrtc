@@ -15,3 +15,5 @@ examples/GumTestApp_macOS/package-lock.json
 lib/
 src/*.js
 
+
+.gradle

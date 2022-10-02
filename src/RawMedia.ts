@@ -29,15 +29,12 @@ const getRawMedia = async (width: number, height: number): Promise<MediaStream> 
 };
 
 const sendRawFrame = async (
-    buffer: string | Uint8Array,
+    buffer: string,
     size: number,
     width: number,
     height: number
 ): Promise<void> => {
     let stringBuffer = buffer;
-    if (buffer instanceof Uint8Array) {
-        stringBuffer = buffer.toString();
-    }
     await WebRTCModule.sendRawFrame(stringBuffer, size, width, height);
 };
 

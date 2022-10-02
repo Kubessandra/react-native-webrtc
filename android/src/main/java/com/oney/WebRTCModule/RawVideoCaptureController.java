@@ -17,6 +17,7 @@ public class RawVideoCaptureController extends AbstractVideoCaptureController {
 
     @Override
     protected VideoCapturer createVideoCapturer() {
-        return new RawVideoCapturer();
+        this.videoCapturer = new RawVideoCapturer();
+        return this.videoCapturer;
     }
 }

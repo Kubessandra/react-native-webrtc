@@ -3,6 +3,7 @@ package com.oney.WebRTCModule;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import android.util.Base64;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -770,10 +771,11 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     public void sendRawFrame(String videoBufferString, int size, int width, int height, Promise promise) {
         ThreadUtils.runOnExecutor(() -> {
             try {
-                byte[] videoBuffer = videoBufferString.getBytes();
+                byte[] videoBuffer = Base64.decode(videoBufferString, Base64.NO_WRAP);
                 getUserMediaImpl.getRawVideoCaptureController().sendFrame(videoBuffer, size, width, height);
                 promise.resolve(true);
             } catch (RuntimeException ex) {
+                Log.e(TAG, "sendRawFrame() failed: ", ex);
                 promise.reject(ex);
             }
         });
