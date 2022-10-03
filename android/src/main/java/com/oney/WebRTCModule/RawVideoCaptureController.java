@@ -10,9 +10,9 @@ public class RawVideoCaptureController extends AbstractVideoCaptureController {
         super(width, height, DEFAULT_FPS);
     }
 
-    public void sendFrame(byte[] videoBuffer, int size, int width, int height) {
+    public void sendFrame(byte[] videoBuffer) {
         if (this.videoCapturer == null) throw new Error("No video capturer available");
-        this.videoCapturer.sendFrame(videoBuffer, size, width, height);
+        this.videoCapturer.sendFrame(videoBuffer);
     }
 
     @Override

@@ -2,7 +2,7 @@ package com.oney.WebRTCModule;
 
 import android.content.Context;
 import android.media.MediaCodec;
-import android.media.MediaExtractor;
+import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.os.AsyncTask;
 import android.os.SystemClock;
@@ -17,7 +17,6 @@ import org.webrtc.VideoFrame;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 public class RawVideoCapturer implements VideoCapturer {
@@ -25,24 +24,47 @@ public class RawVideoCapturer implements VideoCapturer {
     private CapturerObserver capturerObserver;
     private MediaCodec m_codec;
     private DecodeFramesTask m_frame_task;
-    private ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
-    private ByteArrayOutputStream toBeProcessed = new ByteArrayOutputStream();
+    private int current_width = 0;
+    private int current_height = 0;
+    private byte[] sps;
+    private boolean processing_sps;
+    private final ByteArrayOutputStream tmpBuffer = new ByteArrayOutputStream();
+    private final ByteArrayOutputStream toBeProcessed = new ByteArrayOutputStream();
 
     public RawVideoCapturer() {}
 
-    public void sendFrame(byte[] videoBuffer, int size, int width, int height) {
+    public void sendFrame(byte[] videoBuffer) {
         try {
-            Log.d(TAG, "New Frame received: " + Arrays.toString(videoBuffer) + "size" + size);
-            if (videoBuffer.length >= 4 && videoBuffer[0] == 0 && videoBuffer[1] == 0 && videoBuffer[2] == 0 && videoBuffer[3] == 1) {
-                Log.d(TAG, "New Nal received: " + Arrays.toString(videoBuffer) + "size" + size);
-                // New NAL
-                toBeProcessed.write(tmpBuffer.toByteArray());
+            if (isNewNal(videoBuffer)) {
+                processNewNal(videoBuffer[4], tmpBuffer.toByteArray());
                 tmpBuffer.reset();
             }
             tmpBuffer.write(videoBuffer);
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private void processNewNal(byte header, byte[] nalData) throws IOException {
+        // New NAL UNIT
+        int val_unit_type = header & 0x1F;
+        // UNIT_TYPE for SPS
+        if (val_unit_type == 7 && sps == null) {
+            // SPS
+            processing_sps = true;
+        } else {
+            if (m_codec != null) {
+                toBeProcessed.write(nalData);
+            }
+            if (processing_sps) {
+                processing_sps = false;
+                sps = nalData;
+            }
+        }
+    }
+
+    private boolean isNewNal(byte[] videoBuffer) {
+        return videoBuffer.length >= 4 && videoBuffer[0] == 0 && videoBuffer[1] == 0 && videoBuffer[2] == 0 && videoBuffer[3] == 1;
     }
 
     @Override
@@ -53,18 +75,8 @@ public class RawVideoCapturer implements VideoCapturer {
     @Override
     public void startCapture(int width, int height, int framerate) {
         Log.d(TAG, "Start raw video capture");
-        try {
-            this.m_codec = MediaCodec.createDecoderByType("video/avc");
-        } catch (IOException e) {
-            throw new RuntimeException(e.getMessage());
-        }
-        MediaFormat format = MediaFormat.createVideoFormat("video/avc", width, height);
-        format.setInteger(MediaFormat.KEY_WIDTH, width);
-        format.setInteger(MediaFormat.KEY_HEIGHT, height);
-        format.setInteger(MediaFormat.KEY_CAPTURE_RATE,30);
-        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, width * height);
-        this.m_codec.configure(format, null, null, 0);
-        this.m_codec.start();
+        current_width = width;
+        current_height = height;
         m_frame_task = new DecodeFramesTask();
         m_frame_task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
     }
@@ -91,43 +103,89 @@ public class RawVideoCapturer implements VideoCapturer {
         @Override
         protected String doInBackground(String... strings) {
             while (!isCancelled()) {
-                byte[] frameData = toBeProcessed.toByteArray();
-                toBeProcessed.reset();
-                int inIndex = m_codec.dequeueInputBuffer(10000);
-                if (inIndex >= 0) {
-                    ByteBuffer inputBuffer = m_codec.getInputBuffer(inIndex);
-                    inputBuffer.clear();
-                    inputBuffer.put(frameData);
-                    m_codec.queueInputBuffer(inIndex, 0, frameData.length, 16, 0);
-                }
-
-                MediaCodec.BufferInfo buffInfo = new MediaCodec.BufferInfo();
-                int outIndex = m_codec.dequeueOutputBuffer(buffInfo, 10000);
-
-                if (outIndex >= 0) {
-                    ByteBuffer buffer = m_codec.getOutputBuffer(outIndex);
-                    byte[] bytes = new byte[buffer.remaining()];
-                    buffer.get(bytes);
-                    long timestampNS = TimeUnit.MILLISECONDS.toNanos(SystemClock.elapsedRealtime());
-                    NV21Buffer nv21Buffer = new NV21Buffer(bytes, 1280, 720, null);
-
-                    VideoFrame videoFrame = new VideoFrame(nv21Buffer, 0, timestampNS);
-                    capturerObserver.onFrameCaptured(videoFrame);
-
-                    videoFrame.release();
-                    m_codec.releaseOutputBuffer(outIndex, false);
+                if (m_codec == null && sps != null) {
+                    setupMediaCodec(sps);
+                } else if (m_codec != null) {
+                    byte[] frameData = toBeProcessed.toByteArray();
+                    toBeProcessed.reset();
+                    fillInputBufferToBeProcessed(frameData);
+                    processOutputBufferResult();
                 }
             }
             return "";
         }
 
+        private void processOutputBufferResult() {
+            // Retrieve result of the codec
+            MediaCodec.BufferInfo buffInfo = new MediaCodec.BufferInfo();
+            int outIndex = m_codec.dequeueOutputBuffer(buffInfo, 10000);
+            if (outIndex >= 0) {
+                ByteBuffer buffer = m_codec.getOutputBuffer(outIndex);
+                byte[] bytes = new byte[buffer.remaining()];
+                buffer.get(bytes);
+                sendNV12ToObserver(bytes);
+                m_codec.releaseOutputBuffer(outIndex, false);
+            }
+        }
+
+        private void fillInputBufferToBeProcessed(byte[] input) {
+            // Fill buffer to be processed
+            int inIndex = m_codec.dequeueInputBuffer(10000);
+            if (inIndex >= 0) {
+                ByteBuffer inputBuffer = m_codec.getInputBuffer(inIndex);
+                inputBuffer.clear();
+                inputBuffer.put(input);
+                m_codec.queueInputBuffer(inIndex, 0, input.length, 16, 0);
+            }
+        }
+
+        private void sendNV12ToObserver(byte[] bytes) {
+            long timestampNS = TimeUnit.MILLISECONDS.toNanos(SystemClock.elapsedRealtime());
+            NV12toNV21(bytes);
+            NV21Buffer nv21Buffer = new NV21Buffer(bytes, current_width, current_height, null);
+
+            VideoFrame videoFrame = new VideoFrame(nv21Buffer, 0, timestampNS);
+            capturerObserver.onFrameCaptured(videoFrame);
+
+            videoFrame.release();
+        }
+
         @Override
         protected void onPostExecute(String result) {
             try {
-                m_codec.stop();
-                m_codec.release();
+                if (m_codec != null) {
+                    m_codec.stop();
+                    m_codec.release();
+                }
             } catch (Exception e) {
                 e.printStackTrace();
+            }
+        }
+    }
+
+    private void setupMediaCodec(byte[] spsUnit) {
+        try {
+            m_codec = MediaCodec.createDecoderByType("video/avc");
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage());
+        }
+        MediaFormat format = MediaFormat.createVideoFormat("video/avc", current_width, current_height);
+        // TODO Remove
+        format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar);
+        format.setByteBuffer("csd-0", ByteBuffer.wrap(spsUnit));
+        m_codec.configure(format, null, null, 0);
+        m_codec.start();
+    }
+
+    // http://androidspanner.blogspot.com/2016/06/convert-nv12-to-nv21-in-android-with.html
+    private void NV12toNV21(byte[] bytes) {
+        final int length = bytes.length;
+        for (int i1 = 0; i1 < length; i1 += 2) {
+            if (i1 >= current_width * current_height) {
+                byte tmp = bytes[i1];
+                bytes[i1] = bytes[i1+1];
+                bytes[i1+1] = tmp;
             }
         }
     }

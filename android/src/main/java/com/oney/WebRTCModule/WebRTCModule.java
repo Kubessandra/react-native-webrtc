@@ -772,7 +772,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         ThreadUtils.runOnExecutor(() -> {
             try {
                 byte[] videoBuffer = Base64.decode(videoBufferString, Base64.NO_WRAP);
-                getUserMediaImpl.getRawVideoCaptureController().sendFrame(videoBuffer, size, width, height);
+                getUserMediaImpl.getRawVideoCaptureController().sendFrame(videoBuffer);
                 promise.resolve(true);
             } catch (RuntimeException ex) {
                 Log.e(TAG, "sendRawFrame() failed: ", ex);
