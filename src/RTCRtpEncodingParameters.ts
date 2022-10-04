@@ -21,26 +21,26 @@ export default class RTCRtpEncodingParameters {
         return this._maxFramerate;
     }
 
+    set maxFramerate(framerate) {
+        if (framerate && framerate > 0) {
+            this._maxFramerate = framerate;
+        }
+    }
+
     get maxBitrate() {
         return this._maxBitrate;
+    }
+
+    set maxBitrate(bitrate) {
+        if (bitrate && bitrate > 0) {
+            this._maxBitrate = bitrate;
+        }
     }
 
     get scaleResolutionDownBy() {
         return this._scaleResolutionDownBy;
     }
 
-    set maxFramerate(framerate) {
-        if (framerate && framerate > 0) {
-            this._maxFramerate = framerate;
-        }
-    }
-    
-    set maxBitrate(bitrate) {
-        if (bitrate && bitrate > 0) {
-            this._maxBitrate = bitrate;
-        }
-    }
-    
     set scaleResolutionDownBy(resolutionScale) {
         if (resolutionScale && resolutionScale >= 1) {
             this._scaleResolutionDownBy = resolutionScale;
@@ -48,20 +48,22 @@ export default class RTCRtpEncodingParameters {
     }
 
     toJSON() {
-        let obj = {
+        const obj = {
             active: this.active,
-        }
+        };
+
         if (this._maxBitrate !== null) {
             obj['maxBitrate'] = this._maxBitrate;
-        } 
+        }
 
         if (this._maxFramerate !== null) {
             obj['maxFramerate'] = this._maxFramerate;
-        } 
-        
+        }
+
         if (this._scaleResolutionDownBy !== null) {
             obj['scaleResolutionDownBy'] = this._scaleResolutionDownBy;
-        } 
+        }
+
         return obj;
     }
-}   
+}

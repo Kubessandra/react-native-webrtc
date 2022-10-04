@@ -1,7 +1,7 @@
-import RTCRtpParameters, { RTCRtpParametersInit } from "./RTCRtpParameters";
-import RTCRtpEncodingParameters from "./RTCRtpEncodingParameters";
+import RTCRtpEncodingParameters from './RTCRtpEncodingParameters';
+import RTCRtpParameters, { RTCRtpParametersInit } from './RTCRtpParameters';
 
-type DegradationPreferenceType = 'maintain-framerate' 
+type DegradationPreferenceType = 'maintain-framerate'
     | 'maintain-resolution'
     | 'balanced'
     | 'disabled'
@@ -14,16 +14,16 @@ type DegradationPreferenceType = 'maintain-framerate'
 class DegradationPreference {
     static fromNative(nativeFormat: string): DegradationPreferenceType {
         const stringFormat = nativeFormat.toLowerCase().replace('_', '-');
+
         return stringFormat as DegradationPreferenceType;
     }
 
     static toNative(format: DegradationPreferenceType): string {
         return format.toUpperCase().replace('-', '_');
     }
-} 
+}
 
 export default class RTCRtpSendParameters extends RTCRtpParameters {
-
     readonly transactionId: string;
     readonly encodings: RTCRtpEncodingParameters[];
     degradationPreference: DegradationPreferenceType | null;
@@ -40,12 +40,14 @@ export default class RTCRtpSendParameters extends RTCRtpParameters {
     }
 
     toJSON() {
-        let obj = {
+        const obj = {
             encodings: this.encodings,
         };
+
         if (this.degradationPreference !== null) {
             obj['degradationPreference'] = DegradationPreference.toNative(this.degradationPreference);
         }
-        return obj
+
+        return obj;
     }
 }
