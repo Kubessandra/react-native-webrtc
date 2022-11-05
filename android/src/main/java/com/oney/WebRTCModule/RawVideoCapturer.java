@@ -3,10 +3,12 @@ package com.oney.WebRTCModule;
 import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.os.AsyncTask;
 import android.os.SystemClock;
 import android.util.Log;
+
 
 import org.webrtc.CapturerObserver;
 import org.webrtc.NV21Buffer;
@@ -45,20 +47,22 @@ public class RawVideoCapturer implements VideoCapturer {
         }
     }
 
-    private void processNewNal(byte header, byte[] nalData) throws IOException {
+    private void processNewNal(byte header, byte[] oldBuffer) throws IOException {
         // New NAL UNIT
-        int val_unit_type = header & 0x1F;
+        int val_unit_type = header & 0x1F; // 00011111
         // UNIT_TYPE for SPS
         if (val_unit_type == 7 && sps == null) {
             // SPS
+            Log.d(TAG, "SPS Frame");
             processing_sps = true;
         } else {
-            if (m_codec != null) {
-                toBeProcessed.write(nalData);
-            }
             if (processing_sps) {
                 processing_sps = false;
-                sps = nalData;
+                sps = oldBuffer;
+            } else {
+                if (m_codec != null) {
+                    toBeProcessed.write(oldBuffer);
+                }
             }
         }
     }
@@ -74,7 +78,7 @@ public class RawVideoCapturer implements VideoCapturer {
 
     @Override
     public void startCapture(int width, int height, int framerate) {
-        Log.d(TAG, "Start raw video capture");
+        Log.d(TAG, "Start raw video capture w:" + width + " h:" + height + " framerate:" + framerate);
         current_width = width;
         current_height = height;
         m_frame_task = new DecodeFramesTask();
@@ -164,16 +168,23 @@ public class RawVideoCapturer implements VideoCapturer {
     }
 
     private void setupMediaCodec(byte[] spsUnit) {
-        try {
-            m_codec = MediaCodec.createDecoderByType("video/avc");
-        } catch (IOException e) {
-            throw new RuntimeException(e.getMessage());
-        }
+        Log.d(TAG, "Setup media codec");
         MediaFormat format = MediaFormat.createVideoFormat("video/avc", current_width, current_height);
-        // TODO Remove
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
                 MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar);
         format.setByteBuffer("csd-0", ByteBuffer.wrap(spsUnit));
+        try {
+            String decoderName = new MediaCodecList(MediaCodecList.ALL_CODECS).findDecoderForFormat(format);
+
+            // Patch, hardware decoder for Pixel 7 not working, switch to software decoder.
+            if (decoderName.contains("c2.exynos.h264.decoder")) {
+                decoderName = "OMX.google.h264.decoder";
+            }
+
+            m_codec = MediaCodec.createByCodecName(decoderName);
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage());
+        }
         m_codec.configure(format, null, null, 0);
         m_codec.start();
     }
