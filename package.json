@@ -1,6 +1,6 @@
 {
   "name": "react-native-webrtc",
-  "version": "106.0.0-beta.5",
+  "version": "106.0.0-beta.6",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/react-native-webrtc/react-native-webrtc.git"
@@ -64,6 +64,6 @@
     ]
   },
   "webrtc-builds": {
-    "android": "https://github.com/jitsi/webrtc/releases/download/v106.0.0/android-webrtc.zip"
+    "android": "https://github.com/jitsi/webrtc/releases/download/v106.0.1/android-webrtc.zip"
   }
 }

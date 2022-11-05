@@ -1,5 +1,5 @@
 
-import { defineCustomEventTarget } from 'event-target-shim';
+import { defineCustomEventTarget, Event } from 'event-target-shim';
 import { NativeModules } from 'react-native';
 
 import { deepClone } from './RTCUtil';
@@ -93,6 +93,21 @@ class MediaStreamTrack extends defineCustomEventTarget(...MEDIA_STREAM_TRACK_EVE
         }
 
         WebRTCModule.mediaStreamTrackSetVideoEffect(this.id, name);
+    }
+
+    /**
+     * Internal function which is used to set the muted state on remote tracks and
+     * emit the mute / unmute event.
+     *
+     * @param muted Whether the track should be marked as muted / unmuted.
+     */
+    _setMutedInternal(muted: boolean) {
+        if (!this.remote) {
+            throw new Error('Track is not remote!');
+        }
+
+        this._muted = muted;
+        this.dispatchEvent(new Event(muted ? 'mute' : 'unmute'));
     }
 
     applyConstraints(): never {
