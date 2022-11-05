@@ -364,7 +364,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(peerConnectionAddTrack:(nonnull NSNumber 
                                                       trackId:(NSString *)trackId
                                                       options:(NSDictionary *)options)
 {
-   __block id params;
+   __block id params = nil;
 
     dispatch_sync(self.workerQueue, ^{
         RTCPeerConnection *peerConnection = self.peerConnections[objectID];
@@ -404,7 +404,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(peerConnectionAddTrack:(nonnull NSNumber 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(peerConnectionAddTransceiver:(nonnull NSNumber *)objectID
                                                             options:(NSDictionary *)options)
 {
-    __block id params;
+    __block id params = nil;
 
     dispatch_sync(self.workerQueue, ^{
         RTCPeerConnection *peerConnection = self.peerConnections[objectID];
@@ -451,8 +451,17 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(peerConnectionAddTransceiver:(nonnull NSN
                 if (streamIds) {
                     [transceiverInit setStreamIds:streamIds];
                 }
+
+                NSArray *encodingsArray = [initOptions objectForKey:@"sendEncodings"];
+                if (encodingsArray) {
+                    NSMutableArray<RTCRtpEncodingParameters *> *sendEncodings = [NSMutableArray new];
+                    for (NSDictionary* encoding in encodingsArray) {
+                        [sendEncodings addObject:[self parseEncoding:encoding]];
+                    }
+                    [transceiverInit setSendEncodings:sendEncodings];
+                }
             }
-            
+
             transceiver = [peerConnection addTransceiverWithTrack:track init:transceiverInit];
         } else {
             RCTLogWarn(@"peerConnectionAddTransceiver() no type nor trackId provided in options");
@@ -473,49 +482,62 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(peerConnectionAddTransceiver:(nonnull NSN
     return params;
 }
 
-RCT_EXPORT_METHOD(peerConnectionRemoveTrack:(nonnull NSNumber *)objectID
-                                   senderId:(nonnull NSString *)senderId)
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(peerConnectionRemoveTrack:(nonnull NSNumber *)objectID
+                                                        senderId:(nonnull NSString *)senderId)
 {
+    __block BOOL ret = NO;
+
+    dispatch_sync(self.workerQueue, ^{
         RTCPeerConnection *peerConnection = self.peerConnections[objectID];
         if (!peerConnection) {
           RCTLogWarn(@"PeerConnection %@ not found in peerConnectionRemoveTrack()", objectID);
-          [self sendErrorWithEventName: kEventPeerConnectionOnError
-                              funcName: @"removeTrack"
-                               message: @"Peer Connection is not initialized"
-                                  info: nil];
           return;
         }
-        
-        RTCRtpTransceiver *transceiver = nil;
-        
-        for (RTCRtpTransceiver *t in peerConnection.transceivers) {
-            if (t.sender.senderId == senderId) {
-                transceiver = t;
+
+        RTCRtpSender *sender = nil;
+
+        for (RTCRtpSender *s in peerConnection.senders) {
+            if ([s.senderId isEqual: senderId]) {
+                sender = s;
                 break;
             }
         }
-        
-        if (!transceiver) {
-            RCTLogWarn(@"Transceiver not found in peerConnectionRemoveTrack()");
+
+        if (!sender) {
+            RCTLogWarn(@"Sender not found in peerConnectionRemoveTrack()");
             return;
         }
-        
-        NSMutableDictionary *identifier = [NSMutableDictionary new];
-        identifier[@"peerConnectionId"] = objectID;
-        identifier[@"senderId"] = senderId;
-        
-        if ([peerConnection removeTrack: transceiver.sender]) {
-            [self sendEventWithName: kEventPeerConnectionOnRemoveTrackSuccessful
-                               body: identifier];
-        } else {
-            [self sendErrorWithEventName: kEventPeerConnectionOnError
-                                funcName: @"removeTrack"
-                                 message: @"Cannot remove track"
-                                    info: identifier];
-        }
+
+        ret = [peerConnection removeTrack: sender];
+    });
+
+    return @(ret);
 }
 
 // TODO: move these below to some SerializeUrils file
+
+- (RTCRtpEncodingParameters*)parseEncoding:(NSDictionary*)params
+{
+    RTCRtpEncodingParameters *encoding = [RTCRtpEncodingParameters new];
+
+    if (params[@"rid"] != nil) {
+      [encoding setRid:params[@"rid"]];
+    }
+    if (params[@"active"] != nil) {
+      [encoding setIsActive:((NSNumber*)params[@"active"]).boolValue];
+    }
+    if (params[@"maxBitrate"] != nil) {
+      [encoding setMaxBitrateBps:(NSNumber*)params[@"maxBitrate"]];
+    }
+    if (params[@"maxFramerate"] != nil) {
+      [encoding setMaxFramerate:(NSNumber*)params[@"maxFramerate"]];
+    }
+    if (params[@"scaleResolutionDownBy"] != nil) {
+      [encoding setScaleResolutionDownBy:(NSNumber*)params[@"scaleResolutionDownBy"]];
+    }
+
+    return encoding;
+}
 
 /**
  * Constructs a JSON <tt>NSString</tt> representation of a specific
@@ -671,25 +693,25 @@ RCT_EXPORT_METHOD(peerConnectionRemoveTrack:(nonnull NSNumber *)objectID
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeSignalingState:(RTCSignalingState)newState {
   [self sendEventWithName:kEventPeerConnectionSignalingStateChanged
                      body:@{
-                       @"id": peerConnection.reactTag,
+                       @"pcId": peerConnection.reactTag,
                        @"signalingState": [self stringForSignalingState:newState]
                      }];
 }
 
 - (void)peerConnectionShouldNegotiate:(RTCPeerConnection *)peerConnection {
   [self sendEventWithName:kEventPeerConnectionOnRenegotiationNeeded
-                     body:@{ @"id": peerConnection.reactTag }];
+                     body:@{ @"pcId": peerConnection.reactTag }];
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeConnectionState:(RTCPeerConnectionState)newState {
   [self sendEventWithName:kEventPeerConnectionStateChanged
-                     body:@{@"id": peerConnection.reactTag, @"connectionState": [self stringForPeerConnectionState:newState]}];
+                     body:@{@"pcId": peerConnection.reactTag, @"connectionState": [self stringForPeerConnectionState:newState]}];
 }
 
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didChangeIceConnectionState:(RTCIceConnectionState)newState {
   [self sendEventWithName:kEventPeerConnectionIceConnectionChanged
                      body:@{
-                       @"id": peerConnection.reactTag,
+                       @"pcId": peerConnection.reactTag,
                        @"iceConnectionState": [self stringForICEConnectionState:newState]
                      }];
 }
@@ -704,7 +726,7 @@ RCT_EXPORT_METHOD(peerConnectionRemoveTrack:(nonnull NSNumber *)objectID
   }
   [self sendEventWithName:kEventPeerConnectionIceGatheringChanged
                      body:@{
-                       @"id": peerConnection.reactTag,
+                       @"pcId": peerConnection.reactTag,
                        @"iceGatheringState": [self stringForICEGatheringState:newState],
                        @"sdp": newSdp
                      }];
@@ -713,7 +735,7 @@ RCT_EXPORT_METHOD(peerConnectionRemoveTrack:(nonnull NSNumber *)objectID
 - (void)peerConnection:(RTCPeerConnection *)peerConnection didGenerateIceCandidate:(RTCIceCandidate *)candidate {
   [self sendEventWithName:kEventPeerConnectionGotICECandidate
                      body:@{
-                       @"id": peerConnection.reactTag,
+                       @"pcId": peerConnection.reactTag,
                        @"candidate": @{
                            @"candidate": candidate.sdp,
                            @"sdpMLineIndex": @(candidate.sdpMLineIndex),
@@ -746,7 +768,7 @@ RCT_EXPORT_METHOD(peerConnectionRemoveTrack:(nonnull NSNumber *)objectID
         @"readyState": [self stringForDataChannelState:dataChannel.readyState]
       };
     NSDictionary *body = @{
-        @"id": peerConnection.reactTag,
+        @"pcId": peerConnection.reactTag,
         @"dataChannel": dataChannelInfo
     };
     [self sendEventWithName:kEventPeerConnectionDidOpenDataChannel body:body];
@@ -770,16 +792,19 @@ RCT_EXPORT_METHOD(peerConnectionRemoveTrack:(nonnull NSNumber *)objectID
         
         RTCMediaStreamTrack *track = rtpReceiver.track;
         
-        if (peerConnection.remoteTracks[track.trackId]) {
-            return;
+        // We need to fire this event for an existing track sometimes, like
+        // when the transceiver direction (on the sending side) switches from
+        // sendrecv to recvonly and then back.
+        BOOL existingTrack = peerConnection.remoteTracks[track.trackId] != nil;
+
+        if (!existingTrack) {
+            if (track.kind == kRTCMediaStreamTrackKindVideo) {
+                RTCVideoTrack *videoTrack = (RTCVideoTrack *)track;
+                [peerConnection addVideoTrackAdapter: videoTrack];
+            }
+            
+            peerConnection.remoteTracks[track.trackId] = track;
         }
-        
-        if (track.kind == kRTCMediaStreamTrackKindVideo) {
-            RTCVideoTrack *videoTrack = (RTCVideoTrack *)track;
-            [peerConnection addVideoTrackAdapter: videoTrack];
-        }
-        
-        peerConnection.remoteTracks[track.trackId] = track;
         
         NSMutableDictionary *params = [NSMutableDictionary new];
         NSMutableArray *streams = [NSMutableArray new];
@@ -811,10 +836,23 @@ RCT_EXPORT_METHOD(peerConnectionRemoveTrack:(nonnull NSNumber *)objectID
         params[@"receiver"] = [SerializeUtils receiverToJSONWithPeerConnectionId: peerConnection.reactTag receiver: rtpReceiver];
         params[@"transceiverOrder"] = [NSNumber numberWithInt:_transceiverNextId++];
         params[@"transceiver"] = [SerializeUtils transceiverToJSONWithPeerConnectionId: peerConnection.reactTag transceiver: transceiver];
-        params[@"id"] = peerConnection.reactTag;
+        params[@"pcId"] = peerConnection.reactTag;
         
-        [self sendEventWithName: kEventPeerConnectionOnTrack
-                           body: params];
+        [self sendEventWithName: kEventPeerConnectionOnTrack body: params];
+    });
+}
+
+- (void)peerConnection:(RTC_OBJC_TYPE(RTCPeerConnection) *)peerConnection
+     didRemoveReceiver:(RTC_OBJC_TYPE(RTCRtpReceiver) *)rtpReceiver {
+    dispatch_async(self.workerQueue, ^{
+        RTCMediaStreamTrack *track = rtpReceiver.track;
+
+        NSMutableDictionary *params = [NSMutableDictionary new];
+
+        params[@"pcId"] = peerConnection.reactTag;
+        params[@"trackId"] = track.trackId;
+
+        [self sendEventWithName: kEventPeerConnectionOnRemoveTrack body: params];
     });
 }
 

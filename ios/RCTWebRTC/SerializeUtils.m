@@ -36,7 +36,8 @@
             NSString *currentDirectionSerialized = [SerializeUtils serializeDirection: currentDirection];
             transceiverUpdate[@"currentDirection"] = currentDirectionSerialized;
             transceiverUpdate[@"senderRtpParameters"] = [SerializeUtils parametersToJSON:transceiver.sender.parameters];
-            
+            transceiverUpdate[@"receiverRtpParameters"] = [SerializeUtils parametersToJSON:transceiver.receiver.parameters];
+
             [transceiverUpdates addObject:transceiverUpdate];
         }
     }
@@ -69,6 +70,8 @@
     if (receiver.track) {
         receiverDictionary[@"track"] = [SerializeUtils trackToJSONWithPeerConnectionId: id track: receiver.track];
     }
+
+    receiverDictionary[@"rtpParameters"] = [SerializeUtils parametersToJSON: receiver.parameters];
    
    return receiverDictionary;
 }
@@ -95,9 +98,12 @@
     
     for (RTCRtpEncodingParameters *encoding in params.encodings) {
         NSMutableDictionary *encodingDictionary = [NSMutableDictionary new];
-        
+
         encodingDictionary[@"active"] = [NSNumber numberWithBool: encoding.isActive];
-               
+
+        if (encoding.rid) {
+            encodingDictionary[@"rid"] = encoding.rid;
+        }
         if (encoding.maxBitrateBps) {
             encodingDictionary[@"maxBitrate"] = encoding.maxBitrateBps;
         }
@@ -123,8 +129,15 @@
         if (codec.numChannels) {
             codecDictionary[@"channels"] = codec.numChannels;
         }
-        
-        codecDictionary[@"sdpFmtpLine"] = codec.parameters;
+
+        if (codec.parameters.count) {
+            NSMutableArray *parts = [NSMutableArray arrayWithCapacity:codec.parameters.count];
+            [codec.parameters enumerateKeysAndObjectsUsingBlock:^(id _Nonnull key, id _Nonnull value, BOOL * _Nonnull stop) {
+                [parts addObject:[NSString stringWithFormat:@"%@=%@", key, value]];
+            }];
+
+            codecDictionary[@"sdpFmtpLine"] = [parts componentsJoinedByString:@";"];
+        }
 
         [codecs addObject: codecDictionary];
     }

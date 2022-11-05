@@ -1,6 +1,6 @@
 {
   "name": "react-native-webrtc",
-  "version": "106.0.0-beta.2",
+  "version": "106.0.0-beta.6",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/react-native-webrtc/react-native-webrtc.git"
@@ -30,7 +30,7 @@
     "react-native": ">=0.60.0"
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "lint": "eslint --max-warnings 0 . && tsc --noEmit",
     "postinstall": "node tools/downloadWebRTC.js",
     "prepare": "husky install && bob build"
   },
@@ -41,6 +41,10 @@
     "@types/debug": "4.1.7",
     "@types/react": "17.0.40",
     "@types/react-native": "0.67.3",
+    "@typescript-eslint/eslint-plugin": "^5.39.0",
+    "@typescript-eslint/parser": "^5.39.0",
+    "eslint": "^8.24.0",
+    "eslint-plugin-import": "^2.26.0",
     "husky": "7.0.2",
     "lint-staged": "11.2.3",
     "prettier": "2.4.1",
@@ -60,7 +64,6 @@
     ]
   },
   "webrtc-builds": {
-    "android": "https://github.com/jitsi/webrtc/releases/download/v106.0.0/android-webrtc.zip",
-    "ios": "https://github.com/jitsi/webrtc/releases/download/v106.0.0/WebRTC.xcframework.zip"
+    "android": "https://github.com/jitsi/webrtc/releases/download/v106.0.1/android-webrtc.zip"
   }
 }

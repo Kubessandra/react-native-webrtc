@@ -1,17 +1,12 @@
-import { defineCustomEventTarget } from 'event-target-shim';
 import { NativeModules } from 'react-native';
-import { addListener, removeListener } from './EventEmitter';
-import RTCRtpSender from './RTCRtpSender';
-import RTCErrorEvent from './RTCErrorEvent';
+
 import RTCRtpReceiver from './RTCRtpReceiver';
+import RTCRtpSender from './RTCRtpSender';
 
-const {WebRTCModule} = NativeModules;
+const { WebRTCModule } = NativeModules;
 
-const TRANSCEIVER_EVENTS = [
-    'error'
-];
 
-export default class RTCRtpTransceiver extends defineCustomEventTarget(...TRANSCEIVER_EVENTS) {
+export default class RTCRtpTransceiver {
     _peerConnectionId: number;
     _sender: RTCRtpSender;
     _receiver: RTCRtpReceiver;
@@ -32,7 +27,6 @@ export default class RTCRtpTransceiver extends defineCustomEventTarget(...TRANSC
         sender: RTCRtpSender,
         receiver: RTCRtpReceiver,
     }) {
-        super();
         this._peerConnectionId = args.peerConnectionId;
         this._id = args.id;
         this._mid = args.mid ? args.mid : null;
@@ -41,7 +35,6 @@ export default class RTCRtpTransceiver extends defineCustomEventTarget(...TRANSC
         this._stopped = args.isStopped;
         this._sender = args.sender;
         this._receiver = args.receiver;
-        this._registerEvents();
     }
 
     get id() {
@@ -61,7 +54,7 @@ export default class RTCRtpTransceiver extends defineCustomEventTarget(...TRANSC
     }
 
     set direction(val) {
-        if (!['sendonly', 'recvonly', 'sendrecv', 'inactive'].includes(val)) {
+        if (![ 'sendonly', 'recvonly', 'sendrecv', 'inactive' ].includes(val)) {
             throw new TypeError('Invalid direction provided');
         }
 
@@ -73,7 +66,13 @@ export default class RTCRtpTransceiver extends defineCustomEventTarget(...TRANSC
             return;
         }
 
+        const oldDirection = this._direction;
+
         WebRTCModule.transceiverSetDirection(this._peerConnectionId, this.id, val)
+            .catch(() => {
+                this._direction = oldDirection;
+            });
+
         this._direction = val;
     }
 
@@ -93,33 +92,15 @@ export default class RTCRtpTransceiver extends defineCustomEventTarget(...TRANSC
         if (this._stopped) {
             return;
         }
-        WebRTCModule.transceiverStop(this._peerConnectionId, this.id);
+
+        WebRTCModule.transceiverStop(this._peerConnectionId, this.id)
+            .then(() => this._setStopped());
     }
 
-    _registerEvents(): void {
-        addListener(this, 'transceiverStopSuccessful', ev => {
-            if (ev.peerConnectionId !== this._peerConnectionId || ev.transceiverId !== this._id) {
-                return;
-            }
-            this._stopped = true;
-            this._direction = 'stopped'
-            this._currentDirection = 'stopped';
-            this._mid = null;
-            removeListener(this);
-        });
-
-        addListener(this, 'transceiverOnError', ev => {
-            if (ev.info.peerConnectionId !== this._peerConnectionId || ev.info.transceiverId !== this._id) {
-                return;
-            }
-            if (ev.func === 'stopTransceiver') {
-                this._stopped = false;
-            } else if (ev.func === 'setDirection') {
-                this._direction = ev.info.oldDirection;
-            }
-
-            // @ts-ignore
-            this.dispatchEvent(new RTCErrorEvent('error', ev.func, ev.message));
-        });
+    _setStopped() {
+        this._stopped = true;
+        this._direction = 'stopped';
+        this._currentDirection = 'stopped';
+        this._mid = null;
     }
 }
