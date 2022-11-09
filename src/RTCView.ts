@@ -1,5 +1,4 @@
-
-import { requireNativeComponent } from 'react-native';
+import { requireNativeComponent, ViewProps } from "react-native";
 
 /**
  * Native prop validation was removed from RN in:
@@ -57,4 +56,11 @@ import { requireNativeComponent } from 'react-native';
  * zOrder: number
  */
 
-export default requireNativeComponent('RTCVideoView');
+interface RTCVideoViewProps extends ViewProps {
+  mirror?: boolean;
+  objectFit?: "contain" | "cover";
+  streamURL: string;
+  zOrder?: number;
+}
+
+export default requireNativeComponent<RTCVideoViewProps>("RTCVideoView");
